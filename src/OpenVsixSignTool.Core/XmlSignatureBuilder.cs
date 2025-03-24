@@ -9,6 +9,7 @@ using System.Security.Cryptography.Xml;
 using System.Text;
 using System.Xml;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 
 namespace OpenVsixSignTool.Core
 {
@@ -19,6 +20,13 @@ namespace OpenVsixSignTool.Core
         private readonly XmlElement _signatureElement;
         private XmlElement _objectElement;
 
+        private const string XadesNamespace = "http://uri.etsi.org/01903/v1.3.2#";
+        private const string XadesSignedProperties = "http://uri.etsi.org/01903#SignedProperties";
+
+
+        private XmlDocument _comparedocument;
+        private XmlNamespaceManager _compareManager;
+
 
         /// <summary>
         /// Creates a new signature with the correct namespace and empty root <c>Signature</c> element.
@@ -28,14 +36,80 @@ namespace OpenVsixSignTool.Core
             _signingContext = signingContext;
             _document = new XmlDocument();
             var manager = new XmlNamespaceManager(_document.NameTable);
-            manager.AddNamespace("", OpcKnownUris.XmlDSig.AbsoluteUri);
+            manager.AddNamespace("ds", OpcKnownUris.XmlDSig.AbsoluteUri);
+            manager.AddNamespace("xades", OpcKnownUris.XadesNamespace.AbsoluteUri);
             _signatureElement = CreateDSigElement("Signature");
+
+            _comparedocument = new XmlDocument();
+            _comparedocument.Load("SomeXml.xml");
+            _compareManager = new XmlNamespaceManager(_comparedocument.NameTable);
+            _compareManager.AddNamespace("ds", OpcKnownUris.XmlDSig.AbsoluteUri);
+            _compareManager.AddNamespace("xades", OpcKnownUris.XadesNamespace.AbsoluteUri);
         }
 
-        private XmlElement CreateDSigElement(string name) => _document.CreateElement(name, OpcKnownUris.XmlDSig.AbsoluteUri);
+        private XmlElement CreateDSigElement(string name) => _document.CreateElement("ds", name, OpcKnownUris.XmlDSig.AbsoluteUri);
+        private XmlElement CreateXadesElement(string name) => _document.CreateElement("xades", name, OpcKnownUris.XadesNamespace.AbsoluteUri);
 
         public XmlDocument Build()
         {
+            //{
+            //    XmlElement cSignature = _comparedocument["ds:Signature"];
+            //    XmlElement cSignedInfo = cSignature["ds:SignedInfo"];
+            //    XmlElement cSignatureValue = cSignedInfo["ds:SignatureValue"];
+            //    XmlNodeList cReferences = cSignedInfo.SelectNodes("ds:Reference", _compareManager);
+            //    XmlElement myReference = null;
+            //    foreach( XmlElement reference in cReferences)
+            //    {
+            //        if (reference.Attributes["URI"].Value.StartsWith("#SignedProperties"))
+            //        {
+            //            myReference = reference;
+            //        }
+            //    }
+
+
+            //    byte[] calculatedHash = null;
+
+            //    XmlNodeList cObjects = cSignature.SelectNodes("ds:Object", _compareManager);
+            //    foreach (XmlElement node in cObjects)
+            //    {
+            //        if (node.Attributes.Count == 0)
+            //        {
+            //            XmlElement myXades = node as XmlElement;
+            //            if ( myXades != null )
+            //            {
+            //                XmlElement cQualifyingProperties = myXades["xades:QualifyingProperties"];
+            //                XmlElement cSignedProperties = cQualifyingProperties["xades:SignedProperties"];
+
+            //                string method = string.Empty;
+
+            //                using (var data = CanonicalizeElement(cSignedProperties, out method))
+            //                {
+            //                    var cInfo = new HashAlgorithmInfo(_signingContext.FileDigestAlgorithmName);
+            //                    using (var canonicalHashAlgorithm = cInfo.Create())
+            //                    {
+            //                        calculatedHash = canonicalHashAlgorithm.ComputeHash(data);
+            //                    }
+            //                }
+            //            }
+            //            break;
+            //        }
+            //    }
+
+            //    XmlElement cDigestValue = myReference["ds:DigestValue"];
+            //    byte[] actual = Convert.FromBase64String(cDigestValue.InnerText);
+
+
+
+
+
+
+
+
+            //    bool wait = true;
+            //}
+
+
+
             if (_objectElement == null)
             {
                 throw new InvalidOperationException("A manifest has not been set on the builder.");
@@ -51,10 +125,10 @@ namespace OpenVsixSignTool.Core
 
                 XmlElement signedProperties = null;
 
-                XmlElement qualifying = xadesObject["QualifyingProperties"];
+                XmlElement qualifying = xadesObject["xades:QualifyingProperties"];
                 if (qualifying != null)
                 {
-                    signedProperties = qualifying["SignedProperties"];
+                    signedProperties = qualifying["xades:SignedProperties"];
                 }
 
                 byte[] xadesElementHash = null;
@@ -112,9 +186,6 @@ namespace OpenVsixSignTool.Core
                     signerInfoElementHash = canonicalHashAlgorithm.ComputeHash(signerInfoCanonicalStream);
                 }
 
-
-
-
                 signatureValue = BuildSignatureValue(signerInfoElementHash);
             }
 
@@ -134,6 +205,8 @@ namespace OpenVsixSignTool.Core
             return signatureValueElement;
         }
 
+        int counter = 0;
+
         private Stream CanonicalizeElement(XmlElement element, out string canonicalizationMethodUri, Action<string> setCanonicalization = null)
         {
             //The canonicalization transformer can't reasonable do just an element. It
@@ -143,6 +216,9 @@ namespace OpenVsixSignTool.Core
 
             var newDocument = new XmlDocument(_document.NameTable);
             newDocument.LoadXml(element.OuterXml);
+
+            newDocument.Save(counter.ToString() + "_Save.xml");
+            counter++;
 
             transformer.LoadInput(newDocument);
 
@@ -181,7 +257,14 @@ namespace OpenVsixSignTool.Core
                 var referenceUriAttribute = _document.CreateAttribute("URI");
                 var referenceTypeAttribute = _document.CreateAttribute("Type");
                 referenceUriAttribute.Value = reference;
-                referenceTypeAttribute.Value = OpcKnownUris.XmlDSigObject.AbsoluteUri;
+                if (element.Prefix == "xades")
+                {
+                    referenceTypeAttribute.Value = OpcKnownUris.XadesSignedProperties.AbsoluteUri;
+                }
+                else
+                {
+                    referenceTypeAttribute.Value = OpcKnownUris.XmlDSigObject.AbsoluteUri;
+                }
 
                 referenceElement.Attributes.Append(referenceUriAttribute);
                 referenceElement.Attributes.Append(referenceTypeAttribute);
@@ -294,25 +377,25 @@ namespace OpenVsixSignTool.Core
                 XmlElement canonicalizationMethod = CreateDSigElement("CanonicalizationMethod");
                 XmlAttribute algorithm = _document.CreateAttribute("Algorithm");
 
-                algorithm.Value = new XmlDsigC14NTransform(false).Algorithm; ;
+                algorithm.Value = new XmlDsigC14NTransform(false).Algorithm;
                 canonicalizationMethod.Attributes.Append(algorithm);
 
-                XmlElement encapsulatedTimestamp = CreateDSigElement("EncapsulatedTimeStamp");
+                XmlElement encapsulatedTimestamp = CreateXadesElement("EncapsulatedTimeStamp");
                 XmlAttribute encoding = _document.CreateAttribute("Encoding");
                 encoding.Value = "http://uri.etsi.org/01903/v1.2.2#DER";   // This is a guess
-                encapsulatedTimestamp.Attributes.Append(algorithm);
+                encapsulatedTimestamp.Attributes.Append(encoding);
                 encapsulatedTimestamp.InnerText = Convert.ToBase64String(response);
 
-                XmlElement signatureTimeStamp = CreateDSigElement("SignatureTimeStamp");
+                XmlElement signatureTimeStamp = CreateXadesElement("SignatureTimeStamp");
                 signatureTimeStamp.AppendChild(canonicalizationMethod);
                 signatureTimeStamp.AppendChild(encapsulatedTimestamp);
 
-                XmlElement unsignedSignatureProperties = CreateDSigElement("UnsignedSignatureProperties");
+                XmlElement unsignedSignatureProperties = CreateXadesElement("UnsignedSignatureProperties");
                 unsignedSignatureProperties.AppendChild(signatureTimeStamp);
-                XmlElement unsignedProperties = CreateDSigElement("UnsignedProperties");
+                XmlElement unsignedProperties = CreateXadesElement("UnsignedProperties");
                 unsignedProperties.AppendChild(unsignedSignatureProperties);
 
-                XmlElement qualifyingProperties = CreateDSigElement("QualifyingProperties");
+                XmlElement qualifyingProperties = CreateXadesElement("QualifyingProperties");
                 XmlAttribute target = _document.CreateAttribute("Target");
                 target.Value = "#Signature-" + Guid.NewGuid().ToString();
                 qualifyingProperties.Attributes.Append(target);
@@ -348,7 +431,7 @@ namespace OpenVsixSignTool.Core
             XmlElement digestValue = CreateDSigElement("DigestValue");
             digestValue.InnerText = encodedHash;
 
-            XmlElement certDigest = CreateDSigElement("CertDigest");
+            XmlElement certDigest = CreateXadesElement("CertDigest");
             certDigest.AppendChild(digestMethod);
             certDigest.AppendChild(digestValue);
 
@@ -357,37 +440,37 @@ namespace OpenVsixSignTool.Core
             XmlElement issuerSerialNumber = CreateDSigElement("X509SerialNumber");
             issuerSerialNumber.InnerText = _signingContext.Certificate.SerialNumber;
 
-            XmlElement issuerSerial = CreateDSigElement("IssuerSerial");
+            XmlElement issuerSerial = CreateXadesElement("IssuerSerial");
             issuerSerial.AppendChild(issuerNameElement);
             issuerSerial.AppendChild(issuerSerialNumber);
 
-            XmlElement cert = CreateDSigElement("Cert");
+            XmlElement cert = CreateXadesElement("Cert");
             cert.AppendChild(certDigest);
             cert.AppendChild(issuerSerial);
 
-            XmlElement signingCertificate = CreateDSigElement("SigningCertificate");
+            XmlElement signingCertificate = CreateXadesElement("SigningCertificate");
             signingCertificate.AppendChild(cert);
 
-            XmlElement signingTime = CreateDSigElement("SigningTime");
-            signingTime.InnerText = _signingContext.ContextCreationTime.ToString("yyyy-MM-ddTHH:mm:ss.fzzz");
+            XmlElement signingTime = CreateXadesElement("SigningTime");
+            string checkThis = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            string OldTime = _signingContext.ContextCreationTime.ToString("yyyy-MM-ddTHH:mm:ss.fzzz");
+            DateTime utcForOffset = _signingContext.ContextCreationTime.UtcDateTime;
+            string utcTime = utcForOffset.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            signingTime.InnerText = _signingContext.ContextCreationTime.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
 
-            XmlElement signedSignatureProperties = CreateDSigElement("SignedSignatureProperties");
+            XmlElement signedSignatureProperties = CreateXadesElement("SignedSignatureProperties");
             signedSignatureProperties.AppendChild(signingTime);
             signedSignatureProperties.AppendChild(signingCertificate);
 
-            XmlElement signedProperties = CreateDSigElement("SignedProperties");
+            XmlElement signedProperties = CreateXadesElement("SignedProperties");
             XmlAttribute signedPropertiesId = _document.CreateAttribute("Id");
             signedPropertiesId.Value = "SignedProperties-" + Guid.NewGuid().ToString();
-            // terrible programming here
-            _xadesInternalLink = "#" + signedPropertiesId.Value;
             signedProperties.Attributes.Append(signedPropertiesId);
 
             signedProperties.AppendChild(signedSignatureProperties);
 
             return signedProperties;
         }
-
-        private string _xadesInternalLink = string.Empty;
 
         private Rfc3161TimestampToken TimestampCall(XmlElement signedProperties, out byte[] response)
         {
@@ -417,6 +500,30 @@ namespace OpenVsixSignTool.Core
             {
                 token = request.ProcessResponse(responseBytes, out bytesConsumed);
                 response = responseBytes;
+
+                string tryMe = Convert.ToBase64String(response);
+                byte[] backAgain = Convert.FromBase64String(tryMe);
+
+                Rfc3161TimestampTokenInfo localtoken = token.TokenInfo;
+                X509ExtensionCollection coll = localtoken.GetExtensions();
+                SignedCms cms = token.AsSignedCms();
+                bool wait = true;
+
+
+                if (Rfc3161TimestampToken.TryDecode(backAgain,
+                    out Rfc3161TimestampToken timestampResponse,
+                    out int consumed))
+                {
+                    Rfc3161TimestampTokenInfo token2 = timestampResponse.TokenInfo;
+                    X509ExtensionCollection coll3 = token2.GetExtensions();
+                    SignedCms cms3 = timestampResponse.AsSignedCms();
+
+                    bool keepGoing = true;
+                }
+                else
+                {
+                    bool aShit = true;
+                }
             }
 
             return token;
@@ -428,8 +535,8 @@ namespace OpenVsixSignTool.Core
 
             byte[] requestBytes = request.Encode();
 
-            //string timestampServer = "http://timestamp.digicert.com";
-            string timestampServer = "http://timestamp.entrust.net/rfc3161ts2";
+            string timestampServer = "http://timestamp.digicert.com";
+            //string timestampServer = "http://timestamp.entrust.net/rfc3161ts2";
 
             using (HttpClient client = new HttpClient())
             {
