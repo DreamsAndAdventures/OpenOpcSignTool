@@ -102,7 +102,7 @@ namespace OpenVsixSignTool.Core
             }
         }
 
-        public async Task<SignResult> AzureSign(byte[] digest)
+        private async Task<SignResult> AzureSign(byte[] digest)
         {
             SignResult result = null;
 

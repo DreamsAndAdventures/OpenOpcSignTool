@@ -30,6 +30,14 @@ namespace OpenVsixSignTool.Core
             Valid = true;
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="fileDigestAlgorithm"></param>
+        /// <param name="signatureDigestAlgorithm"></param>
+        /// <param name="vaultUrl"></param>
+        /// <param name="objectName"></param>
+        /// <param name="certificate"></param>
         public SignConfigurationSet(
             HashAlgorithmName fileDigestAlgorithm,
             HashAlgorithmName signatureDigestAlgorithm,
