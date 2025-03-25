@@ -99,7 +99,14 @@ namespace OpenVsixSignTool.Core
             else
             {
                 originFile = _package.GetPart(originFileUri) ?? _package.CreatePart(originFileUri, OpcKnownMimeTypes.DigitalSignatureOrigin);
-                _package.Relationships.Add(new OpcRelationship(originFile.Uri, OpcKnownUris.DigitalSignatureOrigin));
+
+                OpcRelationship originRelationship = new OpcRelationship(originFile.Uri, OpcKnownUris.DigitalSignatureOrigin);
+
+                _package.Relationships.Add(originRelationship);
+
+                // Archie - Not the normal Path.  This will validate that an Azure Signature has the same result as the same 
+                // certificate signed locally will have the same result.
+                // originRelationship.Id = "TestingForEquality";
             }
 
             var signatureRelationship = originFile.Relationships.FirstOrDefault(r => r.Type.Equals(OpcKnownUris.DigitalSignatureSignature));

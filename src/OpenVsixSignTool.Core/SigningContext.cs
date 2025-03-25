@@ -1,6 +1,8 @@
-﻿using System;
+﻿using Azure.Security.KeyVault.Keys.Cryptography;
+using System;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading.Tasks;
 
 namespace OpenVsixSignTool.Core
 {
@@ -16,7 +18,15 @@ namespace OpenVsixSignTool.Core
         /// </summary>
         public SigningContext(SignConfigurationSet configuration)
         {
+            DateTimeOffset highNoon = new DateTimeOffset(2025, 3, 24, 12, 0, 1, TimeSpan.Zero);
+
             ContextCreationTime = DateTimeOffset.Now;
+
+            // Archie - Not the normal Path.
+            // This will validate that an Azure Signature has the same result as the same 
+            // certificate signed locally will have the same result.
+            // ContextCreationTime = highNoon;
+
             _configuration = configuration;
         }
 
@@ -42,6 +52,11 @@ namespace OpenVsixSignTool.Core
         {
             get
             {
+                if (_configuration.SigningKey == null && 
+                    _configuration.AzureCryptoClient != null )
+                {
+                    return SigningAlgorithm.RSA;
+                }
                 switch (_configuration.SigningKey)
                 {
                     case RSA _: return SigningAlgorithm.RSA;
@@ -55,7 +70,9 @@ namespace OpenVsixSignTool.Core
         /// <summary>
         /// Gets the XmlDSig identifier for the configured algorithm.
         /// </summary>
-        public Uri XmlDSigIdentifier => SignatureAlgorithmTranslator.SignatureAlgorithmToXmlDSigUri(SignatureAlgorithm, _configuration.SignatureDigestAlgorithm);
+        public Uri XmlDSigIdentifier => SignatureAlgorithmTranslator.SignatureAlgorithmToXmlDSigUri(
+            SignatureAlgorithm, 
+            _configuration.SignatureDigestAlgorithm);
 
 
         /// <summary>
@@ -65,15 +82,45 @@ namespace OpenVsixSignTool.Core
         /// <returns>The signature of the digest.</returns>
         public byte[] SignDigest(byte[] digest)
         {
-            switch (_configuration.SigningKey)
+            if (_configuration.AzureCryptoClient != null)
             {
-                case RSA rsa:
-                    return rsa.SignHash(digest, _configuration.SignatureDigestAlgorithm, RSASignaturePadding.Pkcs1);
-                case ECDsa ecdsa:
-                    return ecdsa.SignHash(digest);
-                default:
-                    throw new InvalidOperationException("Unknown signing algorithm.");
+                SignResult signResult = AzureSign(digest).Result;
+
+                return signResult.Signature;
             }
+            else
+            {
+                switch (_configuration.SigningKey)
+                {
+                    case RSA rsa:
+                        return rsa.SignHash(digest, _configuration.SignatureDigestAlgorithm, RSASignaturePadding.Pkcs1);
+                    case ECDsa ecdsa:
+                        return ecdsa.SignHash(digest);
+                    default:
+                        throw new InvalidOperationException("Unknown signing algorithm.");
+                }
+            }
+        }
+
+        public async Task<SignResult> AzureSign(byte[] digest)
+        {
+            SignResult result = null;
+
+            string muck = _configuration.SignatureDigestAlgorithm.ToString().Replace("SHA", "RS");
+            SignatureAlgorithm algorithm = new SignatureAlgorithm(muck);
+
+            try
+            {
+                result = await _configuration.AzureCryptoClient.SignAsync(
+                    algorithm, digest);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                throw;
+            }
+
+            return result;
         }
 
         /// <summary>

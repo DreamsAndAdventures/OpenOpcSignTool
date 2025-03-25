@@ -1,5 +1,10 @@
-﻿using System.Security.Cryptography;
+﻿using Azure.Identity;
+using Azure.Security.KeyVault.Certificates;
+using Azure.Security.KeyVault.Keys.Cryptography;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System;
+using System.Threading.Tasks;
 
 namespace OpenVsixSignTool.Core
 {
@@ -21,7 +26,73 @@ namespace OpenVsixSignTool.Core
             SignatureDigestAlgorithm = signatureDigestAlgorithm;
             SigningKey = signingKey;
             PublicCertificate = publicCertificate;
+            Valid = true;
         }
+
+        public SignConfigurationSet(
+            HashAlgorithmName fileDigestAlgorithm,
+            HashAlgorithmName signatureDigestAlgorithm,
+            string vaultUrl,
+            string objectName,
+            bool certificate)
+        {
+            FileDigestAlgorithm = fileDigestAlgorithm;
+            SignatureDigestAlgorithm = signatureDigestAlgorithm;
+
+            AzureSetup(vaultUrl, objectName, certificate).Wait();
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="vaultUrl"></param>
+        /// <param name="objectName"></param>
+        /// <param name="certificate"></param>
+        /// <returns></returns>
+        public async Task AzureSetup(string vaultUrl,
+            string objectName,
+            bool certificate)
+        {
+            Valid = false;
+
+            try
+            {
+                DefaultAzureCredential credential = new DefaultAzureCredential();
+
+                if (certificate)
+                {
+                    CertificateClient azureCertificateClient = new CertificateClient(
+                        new Uri(vaultUrl), credential);
+                    KeyVaultCertificateWithPolicy withPolicy = 
+                        await azureCertificateClient.GetCertificateAsync(objectName);
+                    byte[] certificateBytes = withPolicy.Cer;
+                    PublicCertificate = new X509Certificate2(certificateBytes);
+                    AzureCryptoClient = new CryptographyClient(withPolicy.KeyId, credential);
+
+                    Valid = true;
+                }
+                else
+                {
+                    //var keyClient = new KeyClient(new Uri(vaultUrl), credential);
+                    //KeyVaultKey key = await keyClient.GetKeyAsync(objectName);
+                    //JsonWebKey jsonKey = key.Key;
+                    //RSA rsa = RSA.Create();
+                    //rsa.ImportParameters(new RSAParameters
+                    //{
+                    //    // using System.IdentityModel.Tokens.Jwt;
+                    //    Modulus = System.IdentityModel.Tokens.Jwt.Base64Url.Decode(jsonKey.N),
+                    //    Exponent = Base64Url.Decode(jsonKey.E),
+                    //});
+                    //PublicCertificate = new X509Certificate2(rsa.ExportSubjectPublicKeyInfo());
+                }
+
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
+        }
+
 
         /// <summary>
         /// The <see cref="HashAlgorithmName"/> used to digest files.
@@ -41,7 +112,20 @@ namespace OpenVsixSignTool.Core
         /// <summary>
         /// An <see cref="X509Certificate2"/> that contains the public key and certificate used to embed in the signature.
         /// </summary>
-        public X509Certificate2 PublicCertificate { get; }
+        public X509Certificate2 PublicCertificate { get; set; }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public CryptographyClient AzureCryptoClient { get; set; }
+
+
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public bool Valid { get; set; }
+
         
     }
 }

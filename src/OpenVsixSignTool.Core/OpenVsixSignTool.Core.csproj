@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net462;net6.0</TargetFrameworks>
+    <TargetFrameworks>net8.0</TargetFrameworks>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <DebugType>embedded</DebugType>
     <DebugSymbols>true</DebugSymbols>
@@ -46,5 +46,10 @@
   <ItemGroup Condition="'$(TargetFrameworkIdentifier)' == '.NETFramework'">
     <Compile Include="Timestamp\*.netfx.cs" />
     <Compile Include="Interop\*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="1.13.2" />
+    <PackageReference Include="Azure.Security.KeyVault.Certificates" Version="4.7.0" />
+    <PackageReference Include="Azure.Security.KeyVault.Keys" Version="4.7.0" />
   </ItemGroup>
 </Project>
