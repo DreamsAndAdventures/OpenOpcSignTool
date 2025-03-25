@@ -35,30 +35,30 @@ namespace OpenVsixSignTool.Core
         /// </summary>
         /// <param name="fileDigestAlgorithm"></param>
         /// <param name="signatureDigestAlgorithm"></param>
-        /// <param name="vaultUrl"></param>
+        /// <param name="vaultUri"></param>
         /// <param name="objectName"></param>
         /// <param name="certificate"></param>
         public SignConfigurationSet(
             HashAlgorithmName fileDigestAlgorithm,
             HashAlgorithmName signatureDigestAlgorithm,
-            string vaultUrl,
+            string vaultUri,
             string objectName,
             bool certificate)
         {
             FileDigestAlgorithm = fileDigestAlgorithm;
             SignatureDigestAlgorithm = signatureDigestAlgorithm;
 
-            AzureSetup(vaultUrl, objectName, certificate).Wait();
+            AzureSetup(vaultUri, objectName, certificate).Wait();
         }
 
         /// <summary>
         /// 
         /// </summary>
-        /// <param name="vaultUrl"></param>
+        /// <param name="vaultUri"></param>
         /// <param name="objectName"></param>
         /// <param name="certificate"></param>
         /// <returns></returns>
-        public async Task AzureSetup(string vaultUrl,
+        public async Task AzureSetup(string vaultUri,
             string objectName,
             bool certificate)
         {
@@ -71,7 +71,7 @@ namespace OpenVsixSignTool.Core
                 if (certificate)
                 {
                     CertificateClient azureCertificateClient = new CertificateClient(
-                        new Uri(vaultUrl), credential);
+                        new Uri(vaultUri), credential);
                     KeyVaultCertificateWithPolicy withPolicy = 
                         await azureCertificateClient.GetCertificateAsync(objectName);
                     byte[] certificateBytes = withPolicy.Cer;
@@ -83,7 +83,7 @@ namespace OpenVsixSignTool.Core
                 else
                 {
                     // Archie - Does not work until I know I can get a stripped certificate to create a hash
-                    //var keyClient = new KeyClient(new Uri(vaultUrl), credential);
+                    //var keyClient = new KeyClient(new Uri(vaultUri), credential);
 
                     //KeyVaultKey key = await keyClient.GetKeyAsync(objectName);
 
@@ -122,8 +122,6 @@ namespace OpenVsixSignTool.Core
         /// 
         /// </summary>
         public CryptographyClient AzureCryptoClient { get; set; }
-
-
 
         /// <summary>
         /// 

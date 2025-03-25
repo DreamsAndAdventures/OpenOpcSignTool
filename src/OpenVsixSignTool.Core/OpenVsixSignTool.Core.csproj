@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>net8.0</TargetFrameworks>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -13,6 +13,7 @@
     <PackageProjectUrl>https://github.com/vcsjones/OpenOpcSignTool</PackageProjectUrl>
     <RepositoryUrl>https://github.com/vcsjones/OpenOpcSignTool</RepositoryUrl>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <AssemblyName>OpenPackageSignTool</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFrameworkIdentifier)' == '.NETFramework'">
