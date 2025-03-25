@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System;
 using System.Threading.Tasks;
+using Azure.Security.KeyVault.Keys;
 
 namespace OpenVsixSignTool.Core
 {
@@ -73,26 +74,21 @@ namespace OpenVsixSignTool.Core
                 }
                 else
                 {
+                    // Archie - Does not work until I know I can get a stripped certificate to create a hash
                     //var keyClient = new KeyClient(new Uri(vaultUrl), credential);
-                    //KeyVaultKey key = await keyClient.GetKeyAsync(objectName);
-                    //JsonWebKey jsonKey = key.Key;
-                    //RSA rsa = RSA.Create();
-                    //rsa.ImportParameters(new RSAParameters
-                    //{
-                    //    // using System.IdentityModel.Tokens.Jwt;
-                    //    Modulus = System.IdentityModel.Tokens.Jwt.Base64Url.Decode(jsonKey.N),
-                    //    Exponent = Base64Url.Decode(jsonKey.E),
-                    //});
-                    //PublicCertificate = new X509Certificate2(rsa.ExportSubjectPublicKeyInfo());
-                }
 
+                    //KeyVaultKey key = await keyClient.GetKeyAsync(objectName);
+
+                    //AzureCryptoClient = new CryptographyClient(key.Id, credential);
+
+                    //Valid = true;
+                }
             }
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message);
             }
         }
-
 
         /// <summary>
         /// The <see cref="HashAlgorithmName"/> used to digest files.
