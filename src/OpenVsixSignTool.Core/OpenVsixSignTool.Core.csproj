@@ -28,8 +28,8 @@
     <Reference Include="System.Security" />
   </ItemGroup>
   <ItemGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net6.0'))">
-    <PackageReference Include="System.Security.Cryptography.Xml" Version="4.7.1" />
-    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="6.0.3" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="9.0.3" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="9.0.3" />
   </ItemGroup>
 
 
@@ -53,5 +53,9 @@
     <PackageReference Include="Azure.Identity" Version="1.13.2" />
     <PackageReference Include="Azure.Security.KeyVault.Certificates" Version="4.7.0" />
     <PackageReference Include="Azure.Security.KeyVault.Keys" Version="4.7.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Update="Microsoft.SourceLink.GitHub" Version="8.0.0" />
+    <PackageReference Update="MinVer" Version="6.0.0" />
   </ItemGroup>
 </Project>
