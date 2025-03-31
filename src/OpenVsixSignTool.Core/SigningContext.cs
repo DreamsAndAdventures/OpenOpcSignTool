@@ -25,7 +25,7 @@ namespace OpenVsixSignTool.Core
             // Archie - Not the normal Path.
             // This will validate that an Azure Signature has the same result as the same 
             // certificate signed locally will have the same result.
-            ContextCreationTime = highNoon;
+            //ContextCreationTime = highNoon;
 
             _configuration = configuration;
         }

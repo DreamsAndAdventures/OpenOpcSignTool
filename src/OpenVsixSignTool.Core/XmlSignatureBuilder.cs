@@ -23,11 +23,6 @@ namespace OpenVsixSignTool.Core
         private readonly XmlElement _signatureElement = null;
         private XmlElement _objectElement = null;
         private XmlElement _xadesElement = null;
-        private byte[] _objectDigest = null;
-        private byte[] _xadesDigest = null;
-
-
-
 
         /// <summary>
         /// Creates a new signature with the correct namespace and empty root <c>Signature</c> element.
@@ -41,7 +36,6 @@ namespace OpenVsixSignTool.Core
             manager.AddNamespace("xades", OpcKnownUris.XadesNamespace.AbsoluteUri);
             _signatureElement = CreateDSigElement("Signature");
             _document.AppendChild(_signatureElement);
-
         }
 
         private XmlElement CreateDSigElement(string name) => _document.CreateElement("ds", name, OpcKnownUris.XmlDSig.AbsoluteUri);
@@ -84,44 +78,20 @@ namespace OpenVsixSignTool.Core
             {
                 XmlElement rebuildSignedInfo;
                 Stream signedInfoStream = BuildSignedInfoElement(signedXml, out rebuildSignedInfo);
-
-                byte[] blahBlah = GetC14NDigest(signedXml.SignedInfo, hashAlgorithm, rebuildSignedInfo);
-
-                byte[] blahBlah2 = GetC14NDigest(signedXml.SignedInfo, hashAlgorithm, signedXml.SignedInfo.GetXml());
-
-                XmlDocument something = PreProcessElementInput(rebuildSignedInfo, null);
-
+                
                 byte[] signerInfoElementHash = hashAlgorithm.ComputeHash(signedInfoStream);
-
-                XmlElement pretend = signedXml.SignedInfo.GetXml();
-
-                Stream thisHasherValue = CanonicalizeElement(pretend, out _);
-
-                byte[] thisHasherBytes = hashAlgorithm.ComputeHash(thisHasherValue);
-
-
-
-                // Hope this is namespaced - Nope.
-                XmlElement signedInfoElement = signedXml.SignedInfo.GetXml();
-
-                // Signature Value
-                byte[] documentDigest = GetDocumentDigest(signedXml, hashAlgorithm);
-
-                XmlElement signatureValue = BuildSignatureValue(documentDigest);
-
+                XmlElement rebuildSignatureValue = BuildSignatureValue(signerInfoElementHash);
+                
                 XmlElement keyInfoElement = BuildKeyInfoElement();
 
-                XmlElement insertSignedInfo = CreateDSigElement("SignedInfo");
-                insertSignedInfo.InnerXml = signedInfoElement.InnerXml;
-                _signatureElement.AppendChild(insertSignedInfo);
-
-                _signatureElement.AppendChild(signatureValue);
+                _signatureElement.AppendChild(rebuildSignedInfo);
                 _signatureElement.AppendChild(keyInfoElement);
+                _signatureElement.AppendChild(rebuildSignatureValue);
                 _signatureElement.AppendChild(_objectElement);
                 if (addXades)
                 {
                     _signatureElement.AppendChild(_xadesElement);
-                    ProcessXades(_xadesElement, GetXadesDigest(signedXml));
+                    //ProcessXades(_xadesElement, GetXadesDigest(signedXml));
                 }
             }
 
@@ -135,7 +105,7 @@ namespace OpenVsixSignTool.Core
             RSA ensureExceptionIsThrown = null;
             signedXml.SigningKey = ensureExceptionIsThrown;
             //signedXml.SigningKey = _signingContext.Certificate.GetRSAPrivateKey();
-            signedXml.SignedInfo.SignatureMethod = hashAlgorithmInfo.XmlDSigIdentifier.AbsoluteUri;
+            signedXml.SignedInfo.SignatureMethod = SignedXml.XmlDsigRSASHA256Url;//hashAlgorithmInfo.XmlDSigIdentifier.AbsoluteUri;
             signedXml.Signature.Id = "Signature-" + Guid.NewGuid().ToString();
 
             #region DataObjects 
@@ -263,123 +233,6 @@ namespace OpenVsixSignTool.Core
         private string GetObjectId()
         {
             return _objectElement.Attributes["Id"].Value;
-        }
-
-        public List<Reference> XadesTemp()
-        {
-            List<Reference> references = new List<Reference>();
-            XmlElement notSure = null;
-
-
-            XmlDocument temporaryDocument = new XmlDocument(_document.NameTable);
-            XmlNode cloned = _signatureElement.Clone();
-            cloned.AppendChild(_objectElement.Clone());
-            cloned.AppendChild(_xadesElement.Clone());
-            temporaryDocument.LoadXml(cloned.OuterXml);
-
-
-
-
-
-            // This is not the object to use for the hash
-
-            XmlElement signedProperties = null;
-
-            XmlElement qualifying = _xadesElement["xades:QualifyingProperties"];
-            if (qualifying != null)
-            {
-                signedProperties = qualifying["xades:SignedProperties"];
-            }
-
-            string signedPropertiesId = signedProperties.Attributes["Id"].Value;
-
-
-            SignedXml signedXml = new SignedXml(temporaryDocument);
-
-            DataObject dataObject = new DataObject();
-            dataObject.LoadXml(_objectElement);
-            signedXml.AddObject(dataObject);
-            DataObject xadesObject = new DataObject();
-            xadesObject.LoadXml(_xadesElement);
-            signedXml.AddObject(xadesObject);   
-
-            RSA ensureExceptionIsThrown = null;
-            signedXml.SigningKey = ensureExceptionIsThrown;
-            //signedXml.SigningKey = _signingContext.Certificate.GetRSAPrivateKey();
-            signedXml.SignedInfo.SignatureMethod = SignedXml.XmlDsigRSASHA256Url;
-            signedXml.Signature.Id = "Signature-" + Guid.NewGuid().ToString();
-
-            Reference xadesReference = new Reference()
-            {
-                Uri = "#" + signedPropertiesId,
-                Type = OpcKnownUris.XadesSignedProperties.AbsoluteUri,
-                DigestMethod = SignedXml.XmlDsigSHA256Url
-            };
-
-            Reference dataReference = new Reference()
-            {
-                Uri = "#idPackageObject",
-                Type = "http://www.w3.org/2000/09/xmldsig#Object",
-                DigestMethod = SignedXml.XmlDsigSHA256Url
-            };
-
-
-            signedXml.AddReference(xadesReference);
-            signedXml.AddReference(dataReference);
-
-            bool keepGoing = false;
-            try
-            {
-                signedXml.ComputeSignature();
-            }
-            catch (Exception ex)
-            {
-                // Exception is expected and desired
-                keepGoing = true;
-            }
-
-            if (keepGoing)
-            {
-                foreach (Reference reference in signedXml.SignedInfo.References)
-                {
-                    references.Add(reference);
-                }
-
-                HashAlgorithmInfo hasAlgorithmInfo = new HashAlgorithmInfo(_signingContext.FileDigestAlgorithmName);
-                HashAlgorithm hashAlgorithm = hasAlgorithmInfo.Create();
-
-                // Now use reflection to get into the signedXml.
-
-                // Get the SignedInfo object from the SignedXml instance
-                SignedInfo signedInfo = signedXml.SignedInfo;
-
-                // Use reflection to get the GetC14NDigest method
-                MethodInfo getC14NDigestMethod = typeof(SignedXml).GetMethod(
-                    "GetC14NDigest", BindingFlags.NonPublic | BindingFlags.Instance);
-
-                if (getC14NDigestMethod == null)
-                {
-                    throw new InvalidOperationException("GetC14NDigest method not found.");
-                }
-
-                // Invoke the GetC14NDigest method
-                byte[] c14nDigest = (byte[])getC14NDigestMethod.Invoke(signedXml, 
-                    new object[] { hashAlgorithm });
-
-                byte[] mySignature = _signingContext.SignDigest(c14nDigest);
-                string base64Signature = Convert.ToBase64String(mySignature);
-
-
-
-                XmlElement ss = signedXml.SignedInfo.GetXml();
-                string inner = ss.OuterXml;
-                XmlElement s2 = signedXml.GetXml();
-                string inner2 = s2.OuterXml;
-                bool wait = true;
-
-            }
-
-            return references;
         }
 
         private XmlElement BuildSignatureValue(byte[] signerInfoElementHash)
@@ -582,8 +435,7 @@ namespace OpenVsixSignTool.Core
             var signatureTimeFormatElement = _document.CreateElement("Format", OpcKnownUris.XmlDigitalSignature.AbsoluteUri);
             var signatureTimeValueElement = _document.CreateElement("Value", OpcKnownUris.XmlDigitalSignature.AbsoluteUri);
             signatureTimeFormatElement.InnerText = "YYYY-MM-DDThh:mm:ss.sTZD";
-            signatureTimeValueElement.InnerText = _signingContext.ContextCreationTime.ToString("2025-03-19T17:56:01.1Z");
-            //signatureTimeValueElement.InnerText = _signingContext.ContextCreationTime.ToString("yyyy-MM-ddTHH:mm:ss.fzzz");
+            signatureTimeValueElement.InnerText = _signingContext.ContextCreationTime.ToString("yyyy-MM-ddTHH:mm:ss.fzzz");
 
             signatureTimeElement.AppendChild(signatureTimeFormatElement);
             signatureTimeElement.AppendChild(signatureTimeValueElement);
@@ -633,10 +485,8 @@ namespace OpenVsixSignTool.Core
 
         public void CreateXades()
         {
-            byte[] properQuestion = _signingContext.Certificate.GetCertHash();
-            byte[] certificateBytes = _signingContext.Certificate.Export(X509ContentType.Cert);
-            byte[] certificateHashBytes = SHA256.Create().ComputeHash(certificateBytes);
-            string encodedHash = Convert.ToBase64String(properQuestion);
+            byte[] certificateHash = _signingContext.Certificate.GetCertHash();
+            string encodedHash = Convert.ToBase64String(certificateHash);
 
             // Now I can at least create the XAdES element.
 
@@ -802,53 +652,6 @@ namespace OpenVsixSignTool.Core
 
             return response;
         }
-
-
-        XmlDocument PreProcessElementInput(XmlElement elem, string? baseUri)
-        {
-            if (elem is null)
-            {
-                throw new ArgumentNullException(nameof(elem));
-            }
-
-            XmlDocument doc = new XmlDocument();
-            doc.PreserveWhitespace = true;
-            // Normalize the document
-            using (TextReader stringReader = new StringReader(elem.OuterXml))
-            {
-                XmlReaderSettings settings = new XmlReaderSettings();
-                settings.XmlResolver = null;
-                settings.DtdProcessing = DtdProcessing.Parse;
-                //settings.MaxCharactersFromEntities = 10000000;//MaxCharactersFromEntities;
-                //settings.MaxCharactersInDocument = 0;//MaxCharactersInDocument;
-                using XmlReader reader = XmlReader.Create(stringReader, settings, baseUri);
-                doc.Load(reader);
-            }
-            return doc;
-        }
-
-        private byte[] GetC14NDigest(SignedInfo signedInfo, HashAlgorithm hash, XmlElement element)
-        {
-            XmlDocument doc = new XmlDocument(_document.NameTable);
-            doc.LoadXml(element.OuterXml);
-            //string? baseUri = _containingDocument?.BaseURI;
-            //XmlResolver? resolver = (_bResolverSet ? _xmlResolver : XmlResolverHelper.GetThrowingResolver());
-            //XmlDocument doc = Utils.PreProcessElementInput(SignedInfo!.GetXml(), resolver!, baseUri);
-
-            // Add non default namespaces in scope
-            //CanonicalXmlNodeList? namespaces = (_context == null ? null : Utils.GetPropagatedAttributes(_context));
-            //SignedXmlDebugLog.LogNamespacePropagation(this, namespaces);
-            //Utils.AddNamespaces(doc.DocumentElement!, namespaces);
-
-            Transform c14nMethodTransform = signedInfo.CanonicalizationMethodObject;
-            c14nMethodTransform.Resolver = null;
-            //c14nMethodTransform.BaseURI = baseUri;
-
-            c14nMethodTransform.LoadInput(doc);
-            return c14nMethodTransform.GetDigestedOutput(hash);
-        }
-
-
 
     }
 }
