@@ -64,9 +64,9 @@ namespace OpenVsixSignTool.Core
             var builder = new XmlSignatureBuilder(signingContext);
             builder.SetFileManifest(fileManifest);
             builder.CreateXades();
-            builder.XadesTemp();
-            //var result2 = builder.BuildAll();
-            var result = builder.Build();
+            //builder.XadesTemp();
+            var result = builder.BuildAll();
+            //var result = builder.Build();
             PublishSignature(result, signatureFile);
             _package.Flush();
             return new OpcSignature(signatureFile);

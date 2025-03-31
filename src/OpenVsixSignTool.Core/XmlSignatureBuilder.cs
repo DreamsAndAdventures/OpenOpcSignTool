@@ -59,58 +59,128 @@ namespace OpenVsixSignTool.Core
                 throw new InvalidOperationException("Xades Timestamp has not been set on the builder.");
             }
 
-            HashAlgorithmInfo hasAlgorithmInfo = new HashAlgorithmInfo(_signingContext.FileDigestAlgorithmName);
-            HashAlgorithm hashAlgorithm = hasAlgorithmInfo.Create();
-
             _signatureElement.AppendChild(_objectElement);
             _signatureElement.AppendChild(_xadesElement);
 
+            HashAlgorithmInfo hashAlgorithmInfo = new HashAlgorithmInfo(_signingContext.FileDigestAlgorithmName);
+            HashAlgorithm hashAlgorithm = hashAlgorithmInfo.Create();
+
+            SignedXml signedXml = InitializeSignedXml(hashAlgorithmInfo);
+
+            try
+            {
+                // SignedInfo Element
+                signedXml.ComputeSignature();
+                return null;
+            }
+            catch (Exception ex)
+            {
+                // Exception is expected and desired - No private key provided
+
+                // Hope this is namespaced - Nope.
+                XmlElement signedInfoElement = signedXml.SignedInfo.GetXml();
+
+                // Signature Value
+                byte[] documentDigest = GetDocumentDigest(signedXml, hashAlgorithm);
+
+                XmlElement signatureValue = BuildSignatureValue(documentDigest);
+
+                XmlElement keyInfoElement = BuildKeyInfoElement();
+
+                XmlElement insertSignedInfo = CreateDSigElement("SignedInfo");
+                insertSignedInfo.InnerXml = signedInfoElement.InnerXml;
+                _signatureElement.AppendChild(insertSignedInfo);
+
+                _signatureElement.AppendChild(signatureValue);
+                _signatureElement.AppendChild(keyInfoElement);
+
+                ProcessXades(_xadesElement, GetXadesDigest(signedXml));
+            }
+
+            return _document;
+        }
+
+        public SignedXml InitializeSignedXml(HashAlgorithmInfo hashAlgorithmInfo)
+        {
             SignedXml signedXml = new SignedXml(_document);
 
             RSA ensureExceptionIsThrown = null;
             signedXml.SigningKey = ensureExceptionIsThrown;
-            signedXml.SignedInfo.SignatureMethod = hasAlgorithmInfo.XmlDSigIdentifier.AbsoluteUri;
+            //signedXml.SigningKey = _signingContext.Certificate.GetRSAPrivateKey();
+            signedXml.SignedInfo.SignatureMethod = hashAlgorithmInfo.XmlDSigIdentifier.AbsoluteUri;
+            //SignedXml.XmlDsigRSASHA256Url;
             signedXml.Signature.Id = "Signature-" + Guid.NewGuid().ToString();
 
-            Reference xadesReference = new Reference()
-            {
-                Uri = "#" + GetSignedPropertiesId(),
-                Type = OpcKnownUris.XadesSignedProperties.AbsoluteUri,
-                DigestMethod = signedXml.SignedInfo.SignatureMethod
-            };
+            #region DataObjects 
 
-            signedXml.AddReference(xadesReference);
+            DataObject dataObject = new DataObject();
+            dataObject.LoadXml(_objectElement);
+            signedXml.AddObject(dataObject);
+
+            DataObject xadesObject = new DataObject();
+            xadesObject.LoadXml(_xadesElement);
+            signedXml.AddObject(xadesObject);
+
+            #endregion
+
+            #region References
 
             Reference dataReference = new Reference()
             {
                 Uri = "#" + GetObjectId(),
                 Type = OpcKnownUris.XmlDSigObject.AbsoluteUri,
-                DigestMethod = signedXml.SignedInfo.SignatureMethod
+                DigestMethod = SignedXml.XmlDsigSHA256Url
             };
 
             signedXml.AddReference(dataReference);
 
-            bool keepGoing = false;
-            try
+            Reference xadesReference = new Reference()
             {
-                signedXml.ComputeSignature();
-            }
-            catch (Exception ex)
+                Uri = "#" + GetSignedPropertiesId(),
+                Type = OpcKnownUris.XadesSignedProperties.AbsoluteUri,
+                DigestMethod = SignedXml.XmlDsigSHA256Url
+            };
+
+            signedXml.AddReference(xadesReference);
+
+            #endregion
+
+            return signedXml;
+        }
+
+        public byte[] GetXadesDigest( SignedXml signedXml )
+        {
+            byte[] digest = null;
+
+            foreach( Reference reference in signedXml.SignedInfo.References)
             {
-                // Exception is expected and desired
-                keepGoing = true;
+                if (reference.Type == OpcKnownUris.XadesSignedProperties.AbsoluteUri)
+                {
+                    digest = reference.DigestValue;
+                    break;
+                }
             }
 
-            if (keepGoing)
+            return digest;
+        }
+
+        public byte[] GetDocumentDigest(SignedXml signedXml, HashAlgorithm hashAlgorithm)
+        {
+            MethodInfo getC14NDigestMethod = typeof(SignedXml).GetMethod(
+                "GetC14NDigest", BindingFlags.NonPublic | BindingFlags.Instance);
+
+            if (getC14NDigestMethod == null)
             {
-                XmlElement signedInfo = signedXml.SignedInfo.GetXml();
-                XmlDocument dsdfdsf = new XmlDocument(_document.NameTable);
-
-
+                throw new InvalidOperationException("GetC14NDigest method not found.");
             }
 
+            // Invoke the GetC14NDigest method
+            byte[] c14nDigest = (byte[])getC14NDigestMethod.Invoke(signedXml,
+                new object[] { hashAlgorithm });
 
-            return _document;
+            return c14nDigest;
+
+            return _signingContext.SignDigest(c14nDigest);
         }
 
         public XmlDocument Build()
@@ -149,6 +219,7 @@ namespace OpenVsixSignTool.Core
             _document.AppendChild(_signatureElement);
             return _document;
         }
+
         private string GetSignedPropertiesId()
         {
             XmlElement qualifying = _xadesElement["xades:QualifyingProperties"];
@@ -208,7 +279,7 @@ namespace OpenVsixSignTool.Core
             Reference xadesReference = new Reference()
             {
                 Uri = "#" + signedPropertiesId,
-                Type = "http://uri.etsi.org/01903#SignedProperties",
+                Type = OpcKnownUris.XadesSignedProperties.AbsoluteUri,
                 DigestMethod = SignedXml.XmlDsigSHA256Url
             };
 
@@ -281,7 +352,8 @@ namespace OpenVsixSignTool.Core
         private XmlElement BuildSignatureValue(byte[] signerInfoElementHash)
         {
             var signatureValueElement = CreateDSigElement("SignatureValue");
-            signatureValueElement.InnerText = Convert.ToBase64String(_signingContext.SignDigest(signerInfoElementHash));
+            signatureValueElement.InnerText = Convert.ToBase64String(
+                _signingContext.SignDigest(signerInfoElementHash));
             return signatureValueElement;
         }
 
@@ -431,7 +503,8 @@ namespace OpenVsixSignTool.Core
             var signatureTimeFormatElement = _document.CreateElement("Format", OpcKnownUris.XmlDigitalSignature.AbsoluteUri);
             var signatureTimeValueElement = _document.CreateElement("Value", OpcKnownUris.XmlDigitalSignature.AbsoluteUri);
             signatureTimeFormatElement.InnerText = "YYYY-MM-DDThh:mm:ss.sTZD";
-            signatureTimeValueElement.InnerText = _signingContext.ContextCreationTime.ToString("yyyy-MM-ddTHH:mm:ss.fzzz");
+            signatureTimeValueElement.InnerText = _signingContext.ContextCreationTime.ToString("2025-03-19T17:56:01.1Z");
+            //signatureTimeValueElement.InnerText = _signingContext.ContextCreationTime.ToString("yyyy-MM-ddTHH:mm:ss.fzzz");
 
             signatureTimeElement.AppendChild(signatureTimeFormatElement);
             signatureTimeElement.AppendChild(signatureTimeValueElement);
@@ -521,7 +594,8 @@ namespace OpenVsixSignTool.Core
             string OldTime = _signingContext.ContextCreationTime.ToString("yyyy-MM-ddTHH:mm:ss.fzzz");
             DateTime utcForOffset = _signingContext.ContextCreationTime.UtcDateTime;
             string utcTime = utcForOffset.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-            signingTime.InnerText = _signingContext.ContextCreationTime.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            //signingTime.InnerText = _signingContext.ContextCreationTime.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            signingTime.InnerText = "2025-03-19T17:56:01.153Z";
 
             XmlElement signedSignatureProperties = CreateXadesElement("SignedSignatureProperties");
             signedSignatureProperties.AppendChild(signingTime);
