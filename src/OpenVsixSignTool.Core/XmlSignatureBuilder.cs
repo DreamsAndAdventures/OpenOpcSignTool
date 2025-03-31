@@ -44,7 +44,7 @@ namespace OpenVsixSignTool.Core
 
         public XmlDocument BuildAll()
         {
-            bool addXades = false;
+            bool addXades = true;
             if (_objectElement == null)
             {
                 throw new InvalidOperationException("A manifest has not been set on the builder.");
