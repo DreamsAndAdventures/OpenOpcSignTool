@@ -11,6 +11,9 @@ namespace OpenVsixSignTool.Core
         public static readonly Uri XmlDigitalSignature = new Uri("http://schemas.openxmlformats.org/package/2006/digital-signature", UriKind.Absolute);
         public static readonly Uri XmlDSigObject = new Uri("http://www.w3.org/2000/09/xmldsig#Object", UriKind.Absolute);
 
+        public static readonly Uri XadesNamespace = new Uri("http://uri.etsi.org/01903/v1.3.2#", UriKind.Absolute);
+        public static readonly Uri XadesSignedProperties = new Uri("http://uri.etsi.org/01903#SignedProperties", UriKind.Absolute);
+
         // ReSharper disable InconsistentNaming
         public static class SignatureAlgorithms
         {

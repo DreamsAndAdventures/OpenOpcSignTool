@@ -55,15 +55,25 @@ namespace OpenVsixSignTool.Core
         /// </summary>
         /// <param name="configuration">The configuration of properties used to create the signature.
         /// See the documented of <see cref="SignConfigurationSet"/> for more information.</param>
-        public OpcSignature Sign(SignConfigurationSet configuration)
+        public OpcSignature Sign(SignConfigurationSet configuration, string configurationName)
         {
             var fileName = configuration.PublicCertificate.GetCertHashString() + ".psdsxs";
             var (allParts, signatureFile) = SignCore(fileName);
             var signingContext = new SigningContext(configuration);
             var fileManifest = OpcSignatureManifest.Build(signingContext, allParts);
-            var builder = new XmlSignatureBuilder(signingContext);
+            var builder = new XmlSignatureBuilder(signingContext,"ds");
             builder.SetFileManifest(fileManifest);
-            var result = builder.Build();
+            builder.CreateXades();
+
+            XmlDocument result = null;
+            if ( configurationName.Equals("Original"))
+            {
+                result = builder.Build();
+            }
+            else if (configurationName.Equals("SignedXml"))
+            {
+                result = builder.BuildSignedXml();
+            }
             PublishSignature(result, signatureFile);
             _package.Flush();
             return new OpcSignature(signatureFile);
