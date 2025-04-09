@@ -21,12 +21,17 @@ namespace OpenVsixSignTool.Core
         /// <param name="signatureDigestAlgorithm">The <see cref="HashAlgorithmName"/> used in signatures.</param>
         /// <param name="signingKey">An <see cref="AsymmetricAlgorithm"/> with a private key that is used to perform signing operations.</param>
         /// <param name="publicCertificate">An <see cref="X509Certificate2"/> that contains the public key and certificate used to embed in the signature.</param>
-        public SignConfigurationSet(HashAlgorithmName fileDigestAlgorithm, HashAlgorithmName signatureDigestAlgorithm, AsymmetricAlgorithm signingKey, X509Certificate2 publicCertificate)
+        public SignConfigurationSet(HashAlgorithmName fileDigestAlgorithm, 
+            HashAlgorithmName signatureDigestAlgorithm, 
+            AsymmetricAlgorithm signingKey, 
+            X509Certificate2 publicCertificate,
+            string timestampServerUrl)
         {
             FileDigestAlgorithm = fileDigestAlgorithm;
             SignatureDigestAlgorithm = signatureDigestAlgorithm;
             SigningKey = signingKey;
             PublicCertificate = publicCertificate;
+            TimestampServerUrl = timestampServerUrl;
             Valid = true;
         }
 
@@ -43,10 +48,12 @@ namespace OpenVsixSignTool.Core
             HashAlgorithmName signatureDigestAlgorithm,
             string vaultUri,
             string objectName,
+            string timestampServerUrl,
             bool certificate)
         {
             FileDigestAlgorithm = fileDigestAlgorithm;
             SignatureDigestAlgorithm = signatureDigestAlgorithm;
+            TimestampServerUrl = timestampServerUrl;
 
             AzureSetup(vaultUri, objectName, certificate).Wait();
         }
@@ -119,14 +126,17 @@ namespace OpenVsixSignTool.Core
         public X509Certificate2 PublicCertificate { get; set; }
 
         /// <summary>
-        /// 
+        /// Client used for signing the package.
         /// </summary>
         public CryptographyClient AzureCryptoClient { get; set; }
 
-        public string TimestampServerUrl { get; set; } = "http://timestamp.digicert.com";
+        /// <summary>
+        /// The URL of the timestamp server used to sign the package.
+        /// </summary>
+        public string TimestampServerUrl { get; set; }
 
         /// <summary>
-        /// 
+        /// Is the configuration valid?
         /// </summary>
         public bool Valid { get; set; }
 
