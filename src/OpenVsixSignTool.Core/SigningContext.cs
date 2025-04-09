@@ -31,6 +31,11 @@ namespace OpenVsixSignTool.Core
         }
 
         /// <summary>
+        /// 
+        /// </summary>
+        public string TimestampServerUrl => _configuration.TimestampServerUrl;
+
+        /// <summary>
         /// Gets the date and time that this context was created.
         /// </summary>
         public DateTimeOffset ContextCreationTime { get; }

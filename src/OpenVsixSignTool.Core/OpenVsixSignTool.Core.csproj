@@ -53,6 +53,7 @@
     <PackageReference Include="Azure.Identity" Version="1.13.2" />
     <PackageReference Include="Azure.Security.KeyVault.Certificates" Version="4.7.0" />
     <PackageReference Include="Azure.Security.KeyVault.Keys" Version="4.7.0" />
+    <PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Update="Microsoft.SourceLink.GitHub" Version="8.0.0" />

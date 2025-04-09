@@ -123,6 +123,8 @@ namespace OpenVsixSignTool.Core
         /// </summary>
         public CryptographyClient AzureCryptoClient { get; set; }
 
+        public string TimestampServerUrl { get; set; } = "http://timestamp.digicert.com";
+
         /// <summary>
         /// 
         /// </summary>

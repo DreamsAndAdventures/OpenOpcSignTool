@@ -9,10 +9,11 @@ using System.Security.Cryptography.Xml;
 using System.Text;
 using System.Xml;
 using System.Threading.Tasks;
-using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using System.Reflection;
+using System.Net;
+
+using Org.BouncyCastle.Tsp;
 
 namespace OpenVsixSignTool.Core
 {
@@ -70,7 +71,7 @@ namespace OpenVsixSignTool.Core
 
             try
             {
-                // SignedInfo Element
+                // SignedInfo Element - This is expected to fail because there is no private key
                 signedXml.ComputeSignature();
                 return null;
             }
@@ -91,7 +92,9 @@ namespace OpenVsixSignTool.Core
                 if (addXades)
                 {
                     _signatureElement.AppendChild(_xadesElement);
-                    //ProcessXades(_xadesElement, GetXadesDigest(signedXml));
+                    byte[] xadesHash = GetTimestampHash(hashAlgorithmInfo);
+                    byte[] timestamp = GetTimeStamp(hashAlgorithmInfo, xadesHash).Result;
+                    BuildUnsigned(_xadesElement, timestamp);
                 }
             }
 
@@ -104,8 +107,7 @@ namespace OpenVsixSignTool.Core
 
             RSA ensureExceptionIsThrown = null;
             signedXml.SigningKey = ensureExceptionIsThrown;
-            //signedXml.SigningKey = _signingContext.Certificate.GetRSAPrivateKey();
-            signedXml.SignedInfo.SignatureMethod = SignedXml.XmlDsigRSASHA256Url;//hashAlgorithmInfo.XmlDSigIdentifier.AbsoluteUri;
+            signedXml.SignedInfo.SignatureMethod = _signingContext.XmlDSigIdentifier.AbsoluteUri;
             signedXml.Signature.Id = "Signature-" + Guid.NewGuid().ToString();
 
             #region DataObjects 
@@ -221,8 +223,6 @@ namespace OpenVsixSignTool.Core
             return _document;
         }
 
-
-
         private string GetSignedPropertiesId()
         {
             XmlElement qualifying = _xadesElement["xades:QualifyingProperties"];
@@ -314,7 +314,6 @@ namespace OpenVsixSignTool.Core
                 c => canonicalizationMethodAlgorithmAttribute.Value = c);
         }
 
-
         private (Stream, XmlElement) BuildSignedInfoElement(params (XmlElement element, byte[] canonicalDigest, string digestAlgorithm, string canonicalizationMethod)[] objects)
         {
             var signingIdentifier = _signingContext.XmlDSigIdentifier;
@@ -387,6 +386,35 @@ namespace OpenVsixSignTool.Core
             x509CertificateElement.InnerText = publicCertificate;
             x509DataElement.AppendChild(x509CertificateElement);
             keyInfoElement.AppendChild(x509DataElement);
+
+            #region Modulus
+
+            //if (_signingContext.Certificate.HasPrivateKey)
+            //{
+            //    KeyInfo keyInfo = new KeyInfo();
+            //    keyInfo.AddClause(new KeyInfoX509Data((X509Certificate)_signingContext.Certificate));
+            //    keyInfo.AddClause(new RSAKeyValue((RSA)_signingContext.Certificate.GetRSAPrivateKey()));
+
+            //    XmlElement mynewElement = keyInfo.GetXml();
+            //    XmlElement rsa = mynewElement["KeyValue"]["RSAKeyValue"];
+
+            //    XmlElement keyValueElement = CreateDSigElement("KeyValue");
+            //    XmlElement rsaKeyValueElement = CreateDSigElement("RSAKeyValue");
+            //    XmlElement modulusElement = CreateDSigElement("Modulus");
+            //    XmlElement exponentElement = CreateDSigElement("Exponent");
+
+            //    modulusElement.InnerXml = rsa["Modulus"].InnerXml;
+            //    exponentElement.InnerXml = rsa["Exponent"].InnerXml;
+
+            //    rsaKeyValueElement.AppendChild(modulusElement);
+            //    rsaKeyValueElement.AppendChild(exponentElement);
+
+            //    keyValueElement.AppendChild(rsaKeyValueElement);
+            //    keyInfoElement.AppendChild(keyValueElement);
+            //}
+
+            #endregion
+
             return keyInfoElement;
         }
 
@@ -435,7 +463,9 @@ namespace OpenVsixSignTool.Core
             var signatureTimeFormatElement = _document.CreateElement("Format", OpcKnownUris.XmlDigitalSignature.AbsoluteUri);
             var signatureTimeValueElement = _document.CreateElement("Value", OpcKnownUris.XmlDigitalSignature.AbsoluteUri);
             signatureTimeFormatElement.InnerText = "YYYY-MM-DDThh:mm:ss.sTZD";
-            signatureTimeValueElement.InnerText = _signingContext.ContextCreationTime.ToString("yyyy-MM-ddTHH:mm:ss.fzzz");
+
+            // signatureTimeValueElement.InnerText = _signingContext.ContextCreationTime.ToString("yyyy-MM-ddTHH:mm:ss.fzzz");
+            signatureTimeValueElement.InnerText = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fzzz");
 
             signatureTimeElement.AppendChild(signatureTimeFormatElement);
             signatureTimeElement.AppendChild(signatureTimeValueElement);
@@ -447,26 +477,55 @@ namespace OpenVsixSignTool.Core
             _objectElement = objectElement;
         }
 
-
-
-        private void ProcessXades(XmlElement xadesElement, byte[] hash)
+        private byte[] GetTimestampHash(HashAlgorithmInfo hashAlgorithmInfo)
         {
-            byte[] response = null;
-            Rfc3161TimestampToken token = TimestampCall(hash, out response);
+            byte[] xadesHash = null;
+            XmlElement signatureValue = _signatureElement["ds:SignatureValue"];
+            if (signatureValue != null)
+            {
+                XmlDocument xmlDocument = new XmlDocument(_document.NameTable);
+                XmlElement rebuild = xmlDocument.CreateElement("ds", "SignatureValue", OpcKnownUris.XmlDSig.AbsoluteUri);
+                rebuild.InnerXml = signatureValue.InnerXml;
 
-            if (token != null && response != null)
+                xmlDocument.AppendChild(rebuild);
+
+                byte[] myBytes = null;
+
+                XmlDsigExcC14NTransform excTransform = new XmlDsigExcC14NTransform();
+
+                byte[] buffer = Encoding.UTF8.GetBytes(rebuild.OuterXml);
+
+                using (MemoryStream ms = new MemoryStream(buffer))
+                {
+                    excTransform.LoadInput(ms);
+                    using (MemoryStream transformedStream = (MemoryStream)excTransform.GetOutput(typeof(Stream)))
+                    {
+                        myBytes = transformedStream.ToArray();
+                    }
+                }
+
+                HashAlgorithm hashAlgorithm = hashAlgorithmInfo.Create();
+                xadesHash = hashAlgorithm.ComputeHash(myBytes);
+            }
+
+            return xadesHash;
+        }
+
+        private void BuildUnsigned(XmlElement xadesElement, byte[] hash)
+        {
+            if (xadesElement != null && hash != null)
             {
                 XmlElement canonicalizationMethod = CreateDSigElement("CanonicalizationMethod");
                 XmlAttribute algorithm = _document.CreateAttribute("Algorithm");
 
-                algorithm.Value = new XmlDsigC14NTransform(false).Algorithm;
+                algorithm.Value = new XmlDsigExcC14NTransform(false).Algorithm;
                 canonicalizationMethod.Attributes.Append(algorithm);
 
                 XmlElement encapsulatedTimestamp = CreateXadesElement("EncapsulatedTimeStamp");
                 XmlAttribute encoding = _document.CreateAttribute("Encoding");
                 encoding.Value = "http://uri.etsi.org/01903/v1.2.2#DER";   // This is a guess
                 encapsulatedTimestamp.Attributes.Append(encoding);
-                encapsulatedTimestamp.InnerText = Convert.ToBase64String(response);
+                encapsulatedTimestamp.InnerText = Convert.ToBase64String(hash);
 
                 XmlElement signatureTimeStamp = CreateXadesElement("SignatureTimeStamp");
                 signatureTimeStamp.AppendChild(canonicalizationMethod);
@@ -485,15 +544,17 @@ namespace OpenVsixSignTool.Core
 
         public void CreateXades()
         {
-            byte[] certificateHash = _signingContext.Certificate.GetCertHash();
-            string encodedHash = Convert.ToBase64String(certificateHash);
-
-            // Now I can at least create the XAdES element.
-
             XmlElement digestMethod = CreateDSigElement("DigestMethod");
             XmlAttribute algorithm = _document.CreateAttribute("Algorithm");
-            algorithm.Value = "http://www.w3.org/2001/04/xmlenc#sha256";
+            HashAlgorithmInfo hashAlgorithmInfo = new HashAlgorithmInfo(_signingContext.FileDigestAlgorithmName);
+            algorithm.Value = hashAlgorithmInfo.XmlDSigIdentifier.AbsoluteUri;
             digestMethod.Attributes.Append(algorithm);
+
+            byte[] certificateData = _signingContext.Certificate.GetRawCertData();
+
+            HashAlgorithm hashAlgorithm = hashAlgorithmInfo.Create();
+            byte[] certificateHash = hashAlgorithm.ComputeHash(certificateData);
+            string encodedHash = Convert.ToBase64String(certificateHash);
 
             XmlElement digestValue = CreateDSigElement("DigestValue");
             digestValue.InnerText = encodedHash;
@@ -519,12 +580,7 @@ namespace OpenVsixSignTool.Core
             signingCertificate.AppendChild(cert);
 
             XmlElement signingTime = CreateXadesElement("SigningTime");
-            string checkThis = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-            string OldTime = _signingContext.ContextCreationTime.ToString("yyyy-MM-ddTHH:mm:ss.fzzz");
-            DateTime utcForOffset = _signingContext.ContextCreationTime.UtcDateTime;
-            string utcTime = utcForOffset.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-            //signingTime.InnerText = _signingContext.ContextCreationTime.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-            signingTime.InnerText = "2025-03-19T17:56:01.153Z";
+            signingTime.InnerText = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
 
             XmlElement signedSignatureProperties = CreateXadesElement("SignedSignatureProperties");
             signedSignatureProperties.AppendChild(signingTime);
@@ -567,91 +623,60 @@ namespace OpenVsixSignTool.Core
                                      .ToArray();
 
             // Convert the byte array to a BigInteger
-            BigInteger bigInteger = new BigInteger(bytes.Reverse().ToArray());
+            System.Numerics.BigInteger bigInteger = new System.Numerics.BigInteger(bytes.Reverse().ToArray());
 
             // Convert the BigInteger to a decimal string
             return bigInteger.ToString();
         }
 
-        private Rfc3161TimestampToken TimestampCall(byte[] xadesHash,
-            out byte[] response)
+        public async Task<byte[]> GetTimeStamp(HashAlgorithmInfo hashAlgorithmInfo, byte[] hash)
         {
-            Rfc3161TimestampToken token = null;
-            response = null;
+            byte[] timestampResponse = null;
+            TimeStampRequestGenerator requestGenerator = new TimeStampRequestGenerator();
+            requestGenerator.SetCertReq( certReq: true);
 
-            Rfc3161TimestampRequest request = Rfc3161TimestampRequest.CreateFromHash(
-                xadesHash,
-                _signingContext.FileDigestAlgorithmName,
-                nonce: null,
-                requestSignerCertificates: true);
+            Org.BouncyCastle.Math.BigInteger nonce = Org.BouncyCastle.Math.BigInteger.ValueOf(DateTime.Now.Ticks);
 
-            request.GetNonce();
-
-            byte[] responseBytes = TimestampCallAsync(request).Result;
-
-            int bytesConsumed;
-
-            if (responseBytes != null)
-            {
-                token = request.ProcessResponse(responseBytes, out bytesConsumed);
-                response = responseBytes;
-
-                string tryMe = Convert.ToBase64String(response);
-                byte[] backAgain = Convert.FromBase64String(tryMe);
-
-                Rfc3161TimestampTokenInfo localtoken = token.TokenInfo;
-                X509ExtensionCollection coll = localtoken.GetExtensions();
-                SignedCms cms = token.AsSignedCms();
-                bool wait = true;
-
-
-                if (Rfc3161TimestampToken.TryDecode(response,
-                    out Rfc3161TimestampToken timestampResponse,
-                    out int consumed))
-                {
-                    Rfc3161TimestampTokenInfo token2 = timestampResponse.TokenInfo;
-                    X509ExtensionCollection coll3 = token2.GetExtensions();
-                    SignedCms cms3 = timestampResponse.AsSignedCms();
-
-                    bool keepGoing = true;
-                }
-                else
-                {
-                    bool aShit = true;
-                }
-            }
-
-            return token;
-        }
-
-        private async Task<byte[]> TimestampCallAsync(Rfc3161TimestampRequest request)
-        {
-            byte[] response = null;
-
-            byte[] requestBytes = request.Encode();
-
-            string timestampServer = "http://timestamp.digicert.com";
-            //string timestampServer = "http://timestamp.entrust.net/rfc3161ts2";
+            TimeStampRequest request = requestGenerator.Generate(hashAlgorithmInfo.Oid.Value, hash, nonce);
+            byte[] data = request.GetEncoded();
 
             using (HttpClient client = new HttpClient())
             {
-                HttpContent content = new ByteArrayContent(requestBytes);
+                HttpContent content = new ByteArrayContent(data);
                 content.Headers.ContentType = new MediaTypeHeaderValue("application/timestamp-query");
 
-                HttpResponseMessage httpResponse = await client.PostAsync(timestampServer, content);
+                HttpResponseMessage httpResponse = await client.PostAsync(
+                    _signingContext.TimestampServerUrl, content);
 
                 if (httpResponse.IsSuccessStatusCode)
                 {
-                    response = await httpResponse.Content.ReadAsByteArrayAsync();
+                    byte[] responseBytes = await httpResponse.Content.ReadAsByteArrayAsync();
+
+                    TimeStampResponse response = new TimeStampResponse(responseBytes);
+
+                    response.Validate(request);
+
+                    if (response.TimeStampToken == null)
+                    {
+                        throw new Exception("No Timestamps");
+                    }
+
+                    timestampResponse = response.TimeStampToken.GetEncoded();
+
+                    if (Rfc3161TimestampToken.TryDecode(timestampResponse,
+                        out Rfc3161TimestampToken two,
+                        out int consumed2))
+                    {
+                        Rfc3161TimestampTokenInfo token2 = two.TokenInfo;
+                        X509ExtensionCollection coll3 = token2.GetExtensions();
+                        SignedCms cms3 = two.AsSignedCms();
+
+                        bool examine = true;
+                    }
                 }
-                else
-                {
-                    bool oops = true;
-                }
+
+                return timestampResponse;
             }
-
-            return response;
         }
-
     }
 }

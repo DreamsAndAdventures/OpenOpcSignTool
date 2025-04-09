@@ -50,5 +50,10 @@ namespace OpenVsixSignTool.Core
         /// <param name="signature">The signature of the digest to perform validation with.</param>
         /// <returns>True if the digest is valid, otherwise false.</returns>
         bool VerifyDigest(byte[] digest, byte[] signature);
+        
+        /// <summary>
+        /// 
+        /// </summary>
+        string TimestampServerUrl { get; }
     }
 }
