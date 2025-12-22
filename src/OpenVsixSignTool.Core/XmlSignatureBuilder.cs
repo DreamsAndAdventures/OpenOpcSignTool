@@ -131,7 +131,7 @@ namespace OpenVsixSignTool.Core
             {
                 Uri = "#" + GetObjectId(),
                 Type = OpcKnownUris.XmlDSigObject.AbsoluteUri,
-                DigestMethod = SignedXml.XmlDsigSHA256Url
+                DigestMethod = hashAlgorithmInfo.XmlDSigIdentifier.AbsoluteUri
             };
 
             signedXml.AddReference(dataReference);
@@ -142,7 +142,7 @@ namespace OpenVsixSignTool.Core
                 {
                     Uri = "#" + GetSignedPropertiesId(),
                     Type = OpcKnownUris.XadesSignedProperties.AbsoluteUri,
-                    DigestMethod = SignedXml.XmlDsigSHA256Url
+                    DigestMethod = hashAlgorithmInfo.XmlDSigIdentifier.AbsoluteUri
                 };
 
                 signedXml.AddReference(xadesReference);
