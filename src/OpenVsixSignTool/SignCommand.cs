@@ -243,7 +243,8 @@ namespace OpenVsixSignTool
                     fileDigestAlgorithm: fileDigestAlgorithm,
                     signatureDigestAlgorithm: fileDigestAlgorithm,
                     publicCertificate: certificate,
-                    signingKey: signingKey
+                    signingKey: signingKey,
+                    timestampServerUrl: timestampUri?.ToString()
                 );
 
                 var signature = signBuilder.Sign(signingConfiguration);
